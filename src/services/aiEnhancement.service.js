@@ -4,6 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import axios from "axios";
 import config from "../config/index.config.js";
 
+import { getUserAIProvider } from '../utils/cli.utils.js';
+
 const PROVIDERS = {
   OPENAI: "openai",
   CLAUDE: "claude",
@@ -16,10 +18,6 @@ const openai = config.aiEnhancement.openai?.apiKey
   : null;
 const anthropic = config.aiEnhancement.claude?.apiKey
   ? new Anthropic({ apiKey: config.aiEnhancement.claude.apiKey })
-  : null;
-// DeepSeek does not require a client instance, but we check for the API key for symmetry and future extensibility
-const deepseek = config.aiEnhancement.deepseek?.apiKey
-  ? { apiKey: config.aiEnhancement.deepseek.apiKey, model: config.aiEnhancement.deepseek.model }
   : null;
 
 if (!openai && config.aiEnhancement.enabled && config.aiEnhancement.defaultProvider === PROVIDERS.OPENAI) {
@@ -152,9 +150,14 @@ export const getEnhancedSignal = async (
   indicators
 ) => {
   if (!config.aiEnhancement.enabled) {
+    console.log('[AI] Enhancement disabled in config. Returning technical signal.');
     return { ...technicalSignalResult, source: "technical" };
   }
-  const provider = config.aiEnhancement.defaultProvider;
+  // Always use the current user preference from .stockrc
+  let provider = getUserAIProvider();
+  // Also update config for downstream code if needed
+  config.aiEnhancement.defaultProvider = provider;
+  console.log(`[AI] Enhancement enabled. Provider: ${provider}`);
   const handler = PROVIDER_HANDLERS[provider];
   if (!handler) {
     console.warn(`Unsupported AI provider: ${provider} or provider not configured.`);

@@ -2,8 +2,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-
-// Load environment variables
 dotenv.config();
 
 // Get current file directory (ES module equivalent of __dirname)
@@ -19,8 +17,7 @@ const config = {
   assetTypes: {
     stock: 'stock',
     crypto: 'crypto'
-  },
-  
+  },  
   // Cryptocurrency settings
   crypto: {
     supportedSymbols: [

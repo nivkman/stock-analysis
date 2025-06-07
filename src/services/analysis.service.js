@@ -24,40 +24,87 @@ export const analyzeStock = async (symbol) => {
     
     // Calculate technical indicators
     const indicators = calculateIndicators(stockData, symbol);
-    let signalResult = generateSignal(indicators, symbol);
+    let technicalSignal = generateSignal(indicators, symbol);
     const currentPrice = quote ? quote.regularMarketPrice : stockData[stockData.length - 1].close;
 
     // Get AI enhanced signal if enabled
-    const finalSignalResult = await getEnhancedSignal(symbol, currentPrice, signalResult, indicators);
-    
+    const aiSignal = await getEnhancedSignal(symbol, currentPrice, technicalSignal, indicators);
+
+    // --- Merge logic: combine technical and AI signals ---
+    let mergedSignal, mergedConfidence, mergedReasons = [], mergedSource = '';
+    if (aiSignal.signal === technicalSignal.signal) {
+      mergedSignal = aiSignal.signal;
+      mergedConfidence = Math.round((aiSignal.confidence + technicalSignal.confidence) / 2);
+      mergedReasons = [
+        `Both AI and Technical agree: ${aiSignal.signal}.`,
+        ...new Set([...(aiSignal.reasons || []), ...(technicalSignal.reasons || [])])
+      ];
+      mergedSource = 'ai+technical';
+    } else {
+      // If disagree, pick the one with higher confidence, or hold if both are low/conflicting
+      if (aiSignal.confidence > technicalSignal.confidence) {
+        mergedSignal = aiSignal.signal;
+        mergedConfidence = aiSignal.confidence;
+        mergedReasons = [
+          `AI (${aiSignal.signal}, confidence ${aiSignal.confidence}) overrides Technical (${technicalSignal.signal}, confidence ${technicalSignal.confidence})`,
+          ...(aiSignal.reasons || [])
+        ];
+        mergedSource = 'ai';
+      } else if (technicalSignal.confidence > aiSignal.confidence) {
+        mergedSignal = technicalSignal.signal;
+        mergedConfidence = technicalSignal.confidence;
+        mergedReasons = [
+          `Technical (${technicalSignal.signal}, confidence ${technicalSignal.confidence}) overrides AI (${aiSignal.signal}, confidence ${aiSignal.confidence})`,
+          ...(technicalSignal.reasons || [])
+        ];
+        mergedSource = 'technical';
+      } else {
+        mergedSignal = 'hold';
+        mergedConfidence = Math.max(aiSignal.confidence, technicalSignal.confidence);
+        mergedReasons = ['AI and Technical disagree with similar confidence; defaulting to hold.'];
+        mergedSource = 'conflict';
+      }
+    }
+
     // Save to signals file
     const allSignals = await loadSignals();
     allSignals[symbol] = {
-      lastSignal: finalSignalResult.signal,
-      lastSignalSource: finalSignalResult.source || 'technical', // Add source
+      lastSignal: mergedSignal,
+      lastSignalSource: mergedSource,
       lastSignalDate: new Date().toISOString(),
       currentPrice,
       indicators: {
         ...indicators,
-        confidence: finalSignalResult.confidence,
-        reasons: finalSignalResult.reasons
+        ai: aiSignal,
+        technical: technicalSignal,
+        confidence: mergedConfidence,
+        reasons: mergedReasons
       },
       historicalSignals: [
         ...(allSignals[symbol]?.historicalSignals || []),
         {
-          signal: finalSignalResult.signal,
+          signal: mergedSignal,
           price: currentPrice,
-          date: new Date().toISOString()
+          date: new Date().toISOString(),
+          ai: aiSignal,
+          technical: technicalSignal
         }
-      ].slice(-10) // Keep only the 10 most recent signals
+      ].slice(-10)
     };
-    
+
     await saveSignals(allSignals);
-    
-    return { 
-      symbol, 
-      signalResult: finalSignalResult, // Use the final signal result
-      currentPrice, 
+
+    return {
+      symbol,
+      signalResult: {
+        signal: mergedSignal,
+        confidence: mergedConfidence,
+        reasons: mergedReasons,
+        source: mergedSource,
+        ai: aiSignal,
+        technical: technicalSignal
+      },
+      currentPrice,
       indicators,
       companyName: quote?.shortName || quote?.longName || symbol
     };

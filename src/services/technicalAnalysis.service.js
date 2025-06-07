@@ -95,6 +95,10 @@ export const calculateIndicators = (data, symbol = '') => {
   const supportLevel = Math.min(...recentPrices);
   const resistanceLevel = Math.max(...recentPrices);
   
+  // Calculate volume statistics
+  const avgVolume20 = volumes.slice(-20).reduce((a, b) => a + b, 0) / Math.max(volumes.slice(-20).length, 1);
+  const currentVolume = volumes[volumes.length - 1];
+
   return {
     lastPrice,
     sma: {
@@ -106,7 +110,9 @@ export const calculateIndicators = (data, symbol = '') => {
     macd: macd[macd.length - 1],
     bollingerBands: bollingerBands[bollingerBands.length - 1],
     supportLevel,
-    resistanceLevel
+    resistanceLevel,
+    avgVolume20,
+    currentVolume
   };
 };
 
@@ -120,7 +126,7 @@ export const generateSignal = (indicators, symbol = '') => {
     return { signal: 'hold', confidence: 0, reasons: ['Insufficient data'] };
   }
   
-  const { lastPrice, sma, rsi, macd, bollingerBands, supportLevel, resistanceLevel } = indicators;
+  const { lastPrice, sma, rsi, macd, bollingerBands, supportLevel, resistanceLevel, avgVolume20, currentVolume } = indicators;
   const buySignals = [];
   const sellSignals = [];
   let buyConfidence = 0;
@@ -178,6 +184,39 @@ export const generateSignal = (indicators, symbol = '') => {
     sellConfidence += 15;
   }
   
+  // --- Volume-based confidence adjustment ---
+  if (typeof currentVolume === 'number' && typeof avgVolume20 === 'number' && avgVolume20 > 0) {
+    if (currentVolume > avgVolume20 * 1.5) {
+      // High volume: boost confidence
+      if (buyConfidence > sellConfidence) {
+        buyConfidence += 10;
+        buySignals.push('High volume supports bullish signal');
+      } else if (sellConfidence > buyConfidence) {
+        sellConfidence += 10;
+        sellSignals.push('High volume supports bearish signal');
+      } else if (buyConfidence === sellConfidence && buyConfidence > 0) {
+        buyConfidence += 5;
+        sellConfidence += 5;
+        buySignals.push('High volume present, but signals are mixed');
+        sellSignals.push('High volume present, but signals are mixed');
+      }
+    } else if (currentVolume < avgVolume20 * 0.7) {
+      // Low volume: reduce confidence
+      if (buyConfidence > sellConfidence) {
+        buyConfidence = Math.max(0, buyConfidence - 5);
+        buySignals.push('Low volume reduces bullish confidence');
+      } else if (sellConfidence > buyConfidence) {
+        sellConfidence = Math.max(0, sellConfidence - 5);
+        sellSignals.push('Low volume reduces bearish confidence');
+      } else if (buyConfidence === sellConfidence && buyConfidence > 0) {
+        buyConfidence = Math.max(0, buyConfidence - 2);
+        sellConfidence = Math.max(0, sellConfidence - 2);
+        buySignals.push('Low volume present, confidence reduced');
+        sellSignals.push('Low volume present, confidence reduced');
+      }
+    }
+  }
+
   // Bollinger Band analysis
   if (lastPrice < bollingerBands.lower) {
     buySignals.push('Price below lower Bollinger Band');
