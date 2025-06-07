@@ -2,6 +2,7 @@
 import chalk from 'chalk';
 import { fetchStockData, fetchStockQuote } from './stockData.service.js';
 import { calculateIndicators, generateSignal } from './technicalAnalysis.service.js';
+import { getEnhancedSignal } from './aiEnhancement.service.js';
 import { loadSignals, saveSignals } from '../utils/file.utils.js';
 import { createTable, formatSignal } from '../utils/cli.utils.js';
 
@@ -22,25 +23,29 @@ export const analyzeStock = async (symbol) => {
     }
     
     // Calculate technical indicators
-    const indicators = calculateIndicators(stockData);
-    const signalResult = generateSignal(indicators);
+    const indicators = calculateIndicators(stockData, symbol);
+    let signalResult = generateSignal(indicators, symbol);
     const currentPrice = quote ? quote.regularMarketPrice : stockData[stockData.length - 1].close;
+
+    // Get AI enhanced signal if enabled
+    const finalSignalResult = await getEnhancedSignal(symbol, currentPrice, signalResult, indicators);
     
     // Save to signals file
     const allSignals = await loadSignals();
     allSignals[symbol] = {
-      lastSignal: signalResult.signal,
+      lastSignal: finalSignalResult.signal,
+      lastSignalSource: finalSignalResult.source || 'technical', // Add source
       lastSignalDate: new Date().toISOString(),
       currentPrice,
       indicators: {
         ...indicators,
-        confidence: signalResult.confidence,
-        reasons: signalResult.reasons
+        confidence: finalSignalResult.confidence,
+        reasons: finalSignalResult.reasons
       },
       historicalSignals: [
         ...(allSignals[symbol]?.historicalSignals || []),
         {
-          signal: signalResult.signal,
+          signal: finalSignalResult.signal,
           price: currentPrice,
           date: new Date().toISOString()
         }
@@ -51,7 +56,7 @@ export const analyzeStock = async (symbol) => {
     
     return { 
       symbol, 
-      signalResult, 
+      signalResult: finalSignalResult, // Use the final signal result
       currentPrice, 
       indicators,
       companyName: quote?.shortName || quote?.longName || symbol
@@ -82,7 +87,11 @@ export const displayAnalysisResult = (result) => {
   else if (signalResult.signal === 'sell') signalColor = chalk.red;
   else signalColor = chalk.yellow;
   
-  console.log(`\nSignal: ${signalColor.bold(signalResult.signal.toUpperCase())}`);
+  const signalSourceText = signalResult.source && signalResult.source !== 'technical' 
+    ? ` (${signalResult.source.charAt(0).toUpperCase() + signalResult.source.slice(1)} Enhanced)` 
+    : '';
+  console.log(`
+Signal${signalSourceText}: ${signalColor.bold(signalResult.signal.toUpperCase())}`);
   console.log(`Confidence: ${signalColor.bold(signalResult.confidence + '%')}`);
   
   // Display reasons
@@ -135,11 +144,14 @@ export const displayWatchlistTable = (watchlist, signals) => {
       table.push([symbol, 'N/A', 'N/A', 'N/A', 'N/A']);
       continue;
     }
+    const signalText = stockData.lastSignalSource && stockData.lastSignalSource !== 'technical' 
+      ? `${formatSignal(stockData.lastSignal)} (${stockData.lastSignalSource.charAt(0).toUpperCase()})` 
+      : formatSignal(stockData.lastSignal);
     
     table.push([
       symbol,
       `$${stockData.currentPrice?.toFixed(2) || 'N/A'}`,
-      formatSignal(stockData.lastSignal),
+      signalText,
       `${stockData.indicators?.confidence || 'N/A'}%`,
       new Date(stockData.lastSignalDate).toLocaleString()
     ]);
@@ -163,7 +175,7 @@ export const createAnalysisSummaryTable = (results) => {
     table.push([
       result.symbol,
       `$${result.currentPrice.toFixed(2)}`,
-      formatSignal(result.signalResult.signal),
+      `${formatSignal(result.signalResult.signal)}${result.signalResult.source && result.signalResult.source !== 'technical' ? ` (${result.signalResult.source.charAt(0).toUpperCase()})` : ''}`,
       `${result.signalResult.confidence}%`
     ]);
   });

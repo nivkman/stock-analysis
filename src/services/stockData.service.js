@@ -1,6 +1,5 @@
-// Service for fetching and processing stock data
+// Service for fetching and processing stock and crypto data
 import { createRequire } from 'module';
-import axios from 'axios';
 import { createSpinner } from '../utils/cli.utils.js';
 
 // Create require function for CommonJS modules
@@ -8,6 +7,20 @@ const require = createRequire(import.meta.url);
 
 // Import Yahoo Finance (using CommonJS require)
 const yahooFinance = require('yahoo-finance2');
+
+// Helper to format crypto symbols for Yahoo Finance
+const formatSymbol = (symbol) => {
+  // Check if it's a cryptocurrency
+  const cryptoSymbols = ['BTC', 'ETH', 'USDT', 'XRP', 'BNB', 'ADA', 'SOL', 'DOT', 'DOGE', 'SHIB'];
+  const baseSymbol = symbol.replace(/-USD$|\.X$/, '');
+  
+  if (cryptoSymbols.includes(baseSymbol)) {
+    // Yahoo Finance uses -USD suffix for cryptocurrencies
+    return symbol.endsWith('-USD') ? symbol : `${baseSymbol}-USD`;
+  }
+  
+  return symbol;
+};
 
 /**
  * Fetch stock data using Yahoo Finance API
@@ -17,6 +30,7 @@ const yahooFinance = require('yahoo-finance2');
  * @returns {Promise<Array|null>} Formatted stock data or null if error
  */
 export const fetchStockData = async (symbol, interval = 'daily', outputSize = 'compact') => {
+  const formattedSymbol = formatSymbol(symbol);
   const spinner = createSpinner(`Fetching data for ${symbol}...`).start();
   
   try {
@@ -31,7 +45,7 @@ export const fetchStockData = async (symbol, interval = 'daily', outputSize = 'c
     const yahooInterval = interval === 'daily' ? '1d' : interval === 'weekly' ? '1wk' : '1mo';
     
     // Query Yahoo Finance
-    const result = await yahooFinance.default.historical(symbol, {
+    const result = await yahooFinance.default.historical(formattedSymbol, {
       period1,
       period2,
       interval: yahooInterval,
@@ -68,7 +82,8 @@ export const fetchStockData = async (symbol, interval = 'daily', outputSize = 'c
  */
 export const fetchStockQuote = async (symbol) => {
   try {
-    return await yahooFinance.default.quote(symbol);
+    const formattedSymbol = formatSymbol(symbol);
+    return await yahooFinance.default.quote(formattedSymbol);
   } catch (error) {
     console.log(`Could not get quote data for ${symbol}, but continuing with historical analysis.`);
     return null;

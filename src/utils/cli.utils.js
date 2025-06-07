@@ -12,6 +12,33 @@ const require = createRequire(import.meta.url);
 // Handle inquirer compatibility issues
 let inquirerFallback;
 
+// --- AI Provider User Preference Utilities ---
+import fs from 'fs';
+import path from 'path';
+
+const STOCKRC_PATH = path.resolve(process.cwd(), '.stockrc');
+
+export function getUserAIProvider() {
+  try {
+    if (fs.existsSync(STOCKRC_PATH)) {
+      const config = JSON.parse(fs.readFileSync(STOCKRC_PATH, 'utf8'));
+      return config.aiProvider || 'openai';
+    }
+  } catch (e) {}
+  return 'openai';
+}
+
+export function setUserAIProvider(provider) {
+  let config = {};
+  try {
+    if (fs.existsSync(STOCKRC_PATH)) {
+      config = JSON.parse(fs.readFileSync(STOCKRC_PATH, 'utf8'));
+    }
+  } catch (e) {}
+  config.aiProvider = provider;
+  fs.writeFileSync(STOCKRC_PATH, JSON.stringify(config, null, 2));
+}
+
 /**
  * Initialize the inquirer module with fallback support
  * @returns {Promise<void>}

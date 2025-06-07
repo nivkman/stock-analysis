@@ -1,13 +1,43 @@
-// Service for technical analysis and indicators
+// Service for technical analysis and indicators for stocks and cryptocurrencies
 import * as technicalIndicators from 'technicalindicators';
 import config from '../config/index.config.js';
+
+/**
+ * Determine if a symbol is a cryptocurrency
+ * @param {string} symbol Symbol to check
+ * @returns {boolean} True if cryptocurrency, false otherwise
+ */
+const isCryptocurrency = (symbol) => {
+  // Check if symbol is in the supported crypto list or has -USD suffix
+  return config.crypto.supportedSymbols.includes(symbol) || 
+         symbol.endsWith('-USD') || 
+         symbol.endsWith('.X');
+};
+
+/**
+ * Get appropriate analysis parameters based on asset type
+ * @param {string} symbol Symbol to analyze
+ * @param {string} indicatorType Type of indicator (e.g., 'rsi', 'bollingerBands')
+ * @returns {Object} Analysis parameters
+ */
+const getAnalysisParams = (symbol, indicatorType) => {
+  const isCrypto = isCryptocurrency(symbol);
+  
+  // For indicators that have crypto-specific settings
+  if (isCrypto && config.crypto.analysis[indicatorType]) {
+    return config.crypto.analysis[indicatorType];
+  }
+  
+  // Default to standard stock parameters
+  return config.analysis[indicatorType];
+};
 
 /**
  * Calculate technical indicators for a stock
  * @param {Array} data Historical price data
  * @returns {Object} Calculated indicators or error
  */
-export const calculateIndicators = (data) => {
+export const calculateIndicators = (data, symbol = '') => {
   if (!data || data.length < 50) {
     return { error: 'Insufficient data for analysis' };
   }
@@ -16,6 +46,9 @@ export const calculateIndicators = (data) => {
   const highs = data.map(item => item.high);
   const lows = data.map(item => item.low);
   const volumes = data.map(item => item.volume);
+  
+  // Determine if this is a cryptocurrency
+  const isCrypto = isCryptocurrency(symbol);
   
   // Calculate Moving Averages
   const sma20 = technicalIndicators.SMA.calculate({ 
@@ -33,9 +66,10 @@ export const calculateIndicators = (data) => {
     values: closes 
   });
   
-  // Calculate RSI
+  // Calculate RSI with appropriate parameters
+  const rsiParams = getAnalysisParams(symbol, 'rsi');
   const rsi = technicalIndicators.RSI.calculate({ 
-    period: config.analysis.rsi.period, 
+    period: rsiParams.period, 
     values: closes 
   });
   
@@ -47,10 +81,11 @@ export const calculateIndicators = (data) => {
     values: closes
   });
   
-  // Calculate Bollinger Bands
+  // Calculate Bollinger Bands with appropriate parameters
+  const bbParams = getAnalysisParams(symbol, 'bollingerBands');
   const bollingerBands = technicalIndicators.BollingerBands.calculate({
-    period: config.analysis.bollingerBands.period,
-    stdDev: config.analysis.bollingerBands.stdDev,
+    period: bbParams.period,
+    stdDev: bbParams.stdDev,
     values: closes
   });
   
@@ -80,7 +115,7 @@ export const calculateIndicators = (data) => {
  * @param {Object} indicators Calculated technical indicators
  * @returns {Object} Signal information with confidence and reasons
  */
-export const generateSignal = (indicators) => {
+export const generateSignal = (indicators, symbol = '') => {
   if (!indicators || indicators.error) {
     return { signal: 'hold', confidence: 0, reasons: ['Insufficient data'] };
   }
@@ -90,6 +125,10 @@ export const generateSignal = (indicators) => {
   const sellSignals = [];
   let buyConfidence = 0;
   let sellConfidence = 0;
+  
+  // Get appropriate RSI thresholds based on asset type
+  const isCrypto = isCryptocurrency(symbol);
+  const rsiParams = getAnalysisParams(symbol, 'rsi');
   
   // Price crossing above SMA 50 is bullish
   if (lastPrice > sma.sma50 && lastPrice < sma.sma50 * 1.02) {
@@ -104,13 +143,13 @@ export const generateSignal = (indicators) => {
   }
   
   // RSI oversold condition is bullish
-  if (rsi < config.analysis.rsi.oversold) {
+  if (rsi < rsiParams.oversold) {
     buySignals.push('RSI indicates oversold condition');
     buyConfidence += 20;
   }
   
   // RSI overbought condition is bearish
-  if (rsi > config.analysis.rsi.overbought) {
+  if (rsi > rsiParams.overbought) {
     sellSignals.push('RSI indicates overbought condition');
     sellConfidence += 20;
   }

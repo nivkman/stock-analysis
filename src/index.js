@@ -1,7 +1,7 @@
 // Main entry point for the Stock Projector CLI application
 
 import { ensureDataDir } from './utils/file.utils.js';
-import { initInquirer, promptUser, displayHeader } from './utils/cli.utils.js';
+import { initInquirer, promptUser, displayHeader, getUserAIProvider, setUserAIProvider } from './utils/cli.utils.js';
 import { setupScheduledAnalysis } from './services/scheduling.service.js';
 import {
   addStockToWatchlist,
@@ -16,7 +16,8 @@ import {
  */
 async function showMainMenu() {
   displayHeader();
-  
+  let currentAIProvider = getUserAIProvider();
+  const aiProviderDisplay = provider => `Select AI Provider (Current: ${provider})`;
   while (true) {
     const { action } = await promptUser([
       {
@@ -30,6 +31,7 @@ async function showMainMenu() {
           { name: 'Add Stock to Watchlist', value: 'add' },
           { name: 'Remove Stock from Watchlist', value: 'remove' },
           { name: 'Set Up Scheduled Alerts', value: 'schedule' },
+          { name: aiProviderDisplay(currentAIProvider), value: 'ai_provider' },
           { name: 'Exit', value: 'exit' }
         ]
       }
@@ -54,6 +56,29 @@ async function showMainMenu() {
       case 'schedule':
         setupScheduledAnalysis();
         break;
+      case 'ai_provider': {
+        const { provider } = await promptUser([
+          {
+            type: 'list',
+            name: 'provider',
+            message: 'Select the AI provider to use for signal enhancement:',
+            choices: [
+              { name: 'OpenAI', value: 'openai' },
+              { name: 'Claude', value: 'claude' },
+              { name: 'DeepSeek', value: 'deepseek' }
+            ],
+            default: currentAIProvider
+          }
+        ]);
+        setUserAIProvider(provider);
+        // Hot-update config for this session
+        import('./config/index.config.js').then(({ default: config }) => {
+          config.aiEnhancement.defaultProvider = provider;
+        });
+        currentAIProvider = provider;
+        console.log(`AI provider set to: ${provider}`);
+        break;
+      }
       case 'exit':
         console.log('Thank you for using Stock Projector CLI!');
         process.exit(0);

@@ -27,7 +27,9 @@
     "nodemailer": "^7.0.3",
     "ora": "^8.2.0",
     "technicalindicators": "^3.1.0",
-    "yahoo-finance2": "^2.8.1"
+    "yahoo-finance2": "^2.8.1",
+    "openai": "^4.0.0",
+    "@anthropic-ai/sdk": "^0.20.0"
   },
   "devDependencies": {}
 }
